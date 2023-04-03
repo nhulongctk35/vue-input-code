@@ -1,85 +1,111 @@
 <template>
     <div class="pincode">
-        <template v-for="item in length">
-            <input ref="inputs" v-model="digits[item]" :type="isSecretMode ? 'password' : 'text'" @input="onInput(item)"
-                @paste="onPaste" :maxlength="1" :autofocus="true" />
-        </template>
+        <PinInput
+            v-for="(item, idx) in digits" :key="idx" class="pin"
+            ref="pinInputs"
+            v-model="digits[idx]"
+            :last="idx === digits.length - 1"
+            :mask="mask"
+            :validate="validateFn"
+            @paste="onPaste"
+            @validate="onValidate($event, idx)"
+            @backward="onBackward(idx)"
+            @forward="onForward(idx)"
+        />
     </div>
 </template>
-  
+
 <script lang="ts">
-import { ref } from 'vue';
+import { ref, computed } from 'vue'
+import PinInput from './PinInput.vue'
 
 export default {
+    components: {
+        PinInput
+    },
     props: {
         length: {
             type: Number,
             default: 4
         },
-        isSecretMode: {
-            type: Boolean,
-            default: false
-        }
+        tester: {
+            type: String,
+            default: () => '\d' // eslint-disable-line no-useless-escape
+        },
+        mask: Boolean
     },
 
     emits: ['complete'],
 
     setup(props, { emit }) {
-        const digits = ref<string[]>(Array(props.length).fill(''));
-        const inputs = ref<(HTMLInputElement | null)[]>([]);
+        const digits = ref<string[]>(Array(props.length).fill(''))
+        const pinInputs = ref<(typeof PinInput | null)[]>([])
+        const inputTester = computed(() => new RegExp(`^\\${props.tester}$`))
+        const pasteTester = computed(() => new RegExp(`[^\\${props.tester}]`, 'g'))
+        console.log(inputTester.value, pasteTester.value)
 
-        const setRefs = (index: number) => (el: HTMLInputElement | null) => {
-            if (el !== null) {
-                inputs.value[index] = el;
-                return el;
+        const validateFn = (value: string) => {
+            if (inputTester.value.test(value)) {
+                return value
             }
-        };
 
-        const onInput = (index: number) => {
-            const input = inputs.value[index];
-            const value = input?.value ?? '';
+            return ''
+        }
 
-            if (/^\d$/.test(value)) {
-                digits.value[index] = value;
-
-                if (index < props.length - 1 && digits.value[index] !== '') {
-                    const nextInput = inputs.value[index + 1];
-                    nextInput?.focus();
-                }
-
-                if (index === props.length - 1 && digits.value.every(d => /^\d$/.test(d))) {
-                    emit('complete', digits.value.join(''));
-                }
+        const onValidate = async (result: boolean, idx: number) => {
+            if (!result) {
+                return
             }
-        };
+
+            if (pinInputs.value[idx + 1]) {
+                (pinInputs.value[idx + 1]?.el as HTMLInputElement)?.focus()
+            }
+
+            const value =  digits.value.join('')
+            if (value.length >= digits.value.length) {
+                setTimeout(() => emit('complete', value))
+            }
+        }
+
+        const onBackward = (idx: number) => {
+            if (pinInputs.value[idx - 1]) {
+                (pinInputs.value[idx - 1]?.el as HTMLInputElement)?.focus()
+            }
+        }
+
+        const onForward = (idx: number) => {
+            if (pinInputs.value[idx + 1]) {
+                (pinInputs.value[idx + 1]?.el as HTMLInputElement)?.focus()
+            }
+        }
 
         const onPaste = (event: ClipboardEvent) => {
-            event.preventDefault();
-
-            const text = event.clipboardData?.getData('text/plain')?.replace(/[^\d]/g, '') ?? '';
-            const newDigits = text.slice(0, props.length).split('');
+            const text = event.clipboardData?.getData('text/plain')?.replace(pasteTester.value, '') ?? ''
+            const newDigits = text.slice(0, props.length).split('')
 
             newDigits.forEach((char, index) => {
-                const input = inputs.value[index];
+                const inputEl = pinInputs.value[index]?.el
 
-                if (input) {
-                    input.value = char;
-                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                if (inputEl) {
+                    inputEl.value = char
+                    inputEl.dispatchEvent(new Event('input', { bubbles: true }))
                 }
-            });
-        };
+            })
+        }
 
         return {
-            inputs,
-            setRefs,
+            pinInputs,
             digits,
-            onInput,
-            onPaste
-        };
+            onPaste,
+            onBackward,
+            onForward,
+            onValidate,
+            validateFn
+        }
     }
-};
+}
 </script>
-  
+
 <style scoped>
 .pincode {
     display: flex;
@@ -87,31 +113,5 @@ export default {
     align-items: center;
     width: 100%;
     gap: 12px;
-}
-
-.pincode input {
-    width: 60px;
-    height: 80px;
-    border: none;
-    border-radius: 5px;
-    background-color: #f2f2f2;
-    text-align: center;
-    font-size: 20px;
-    font-weight: bold;
-    color: #333;
-    box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
-    transition: all 0.3s ease-in-out;
-}
-
-.pincode input:focus {
-    outline: none;
-    box-shadow: 0 0 5px rgba(0, 0, 0, 0.2);
-    background-color: #fff;
-    color: #333;
-}
-
-.pincode input:focus~input {
-    background-color: #d9d9d9;
-    color: #999;
 }
 </style>
